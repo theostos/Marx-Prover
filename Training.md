@@ -8,9 +8,20 @@ Fine-tune one model through the experience of a [swarm of its copies](Organizati
 
 Run copies of a larger teacher, e.g. [DeepSeek V4.1 Flash](https://api-docs.deepseek.com/news/news260910/), as a swarm in the minimal environment.
 
-Record how the copies organize, write scripts, exchange messages (*WIP: how to implement it?*), and complete proofs. 
+Record how the copies organize, write scripts, exchange messages (*WIP: how to implement it?*), and complete proofs.
 
 **SFT supplies collaborative examples to warm up RL.**
+
+## Data autonomy policy
+
+The generator may be autonomous; the judge is not. An agent may propose and formalize its own training problems, provided:
+
+- Verification stays external and frozen: statements, allowed assumptions, and the Lean project are not under the swarm's control.
+- Evaluation problems and their traces stay excluded and unreachable by the generation pipeline.
+- Difficulty targets a success window of the current student (problems the student solves sometimes, not always or never).
+- A quota of statements comes from sources outside the model, to avoid distributional collapse toward what it already solves.
+
+Pilot plan: [SFT pilot dataset](Dataset-SFT-pilot.md).
 
 ## RL
 
