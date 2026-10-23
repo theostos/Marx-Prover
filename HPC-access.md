@@ -160,6 +160,33 @@ salloc -p grantgpu -A <SLURM_ACCOUNT_GPU> --gres=gpu:1 --constraint=gpuh100 -c 8
 
 then run `llama-server` by hand and probe with `curl`. Quick GPU compile checks: `hpc-glogin` (no allocation, do not run long jobs there).
 
+## Lean 4 environment (validated 2026-10-23)
+
+Needed to check Lean proofs produced during swarm runs (miniF2F pilot, see [Dataset](Dataset-SFT-pilot.md)). Everything is installed under `$HOME` via elan on the login node, so it works unchanged inside batch jobs.
+
+- elan 4.2.4 + toolchain `leanprover/lean4:v4.27.0` (matches the [google-deepmind/miniF2F](https://github.com/google-deepmind/miniF2F) checkout in `~/gitlab/miniF2F`).
+- Mathlib oleans come from the cache server (7869 `.ltar` files, 6.7 Gio unpacked into `.lake/`). Never build Mathlib from source on the cluster.
+- Lean checks are CPU jobs: `#SBATCH -p grant -A <SLURM_ACCOUNT_CPU>`, 4-8 cores; `--mem=16G` is enough for `import Mathlib` (peak RSS ~8-10 Gio).
+
+**Pitfall 1 — elan's bundled clang needs glibc 2.29, the cluster (RHEL 8.7) has 2.28.** Any step compiling generated C (`precompileModules`: Batteries, the Cache tool) fails. Workaround: `LEAN_CC` pointing at the cluster's clang 5 (`/usr/local/llvm/llvm-5/bin/clang`), via the wrapper `~/gitlab/marx-prover/pilot/lean-cc.sh` which also drops `-fstack-clash-protection` (rejected by clang 5) and appends `-L$HOME/.elan/toolchains/leanprover--lean4---v4.27.0/lib` so linking finds `-lc++ -lc++abi -luv -lgmp`:
+
+```
+export PATH=$HOME/.elan/bin:$PATH
+export LEAN_CC=$HOME/gitlab/marx-prover/pilot/lean-cc.sh
+```
+
+**Pitfall 2 — the mathlib cache downloader's curl.** `lake exe cache get` fetches a static curl 7.88.1 into `~/.cache/mathlib/curl-7.88.1`; on the cluster that binary fails every transfer (`OpenSSL/3.0.8: STORE routines::unregistered scheme`). The system curl (7.61.1) downloads fine but is too old for the tool's `--parallel` + `--write-out %{json}` batch mode. Workaround: replace `~/.cache/mathlib/curl-7.88.1` with the bash wrapper `~/gitlab/marx-prover/pilot/curl-wrapper.sh` (kept as a copy), which emulates the batch mode with system curl + `xargs -P 8` and emits the same JSON status lines. With both wrappers in place, `lake exe cache get` runs end-to-end (~20 min: hashing, download, unpack).
+
+**Performance retex (measured 2026-10-23).**
+
+- `import Mathlib` = load ~8600 oleans (6.7 Gio): ~10 min with a cold NFS cache, ~3 min warm (a pure re-read of the tree takes seconds — server-side page cache). Mathlib is **never recompiled**: lake only re-checks ~7900 traces and compiles the target module.
+- For fast proof-iteration loops, prefer `lean --server` (resident LSP process, incremental re-checks) or narrow imports (`Mathlib.Tactic.FieldSimp` instead of `Mathlib`) over one fresh `lean` process per attempt.
+- Warm-up idea: inside the same Slurm job, start the Lean (or Rocq) warm-up in parallel with model loading and the first inferences — e.g. one CPU core runs a dummy `lake env lean` (`import Mathlib` on a scratch file, or a one-shot check of `MiniF2F.Valid`) while the GPU serves. The ~10 min cold NFS read then overlaps with inference instead of delaying the first proof check (~3 min warm).
+- Do not pipe job logs through `tail`: output is buffered and the log stays empty until the very end. Monitor with a `vmstat`/`date` loop instead (`diag_check.sbatch`).
+- Compute-node SSH from the login node is refused; live process inspection inside the job is the only option.
+
+**Pilot result (first end-to-end proof loop).** Ternary-Bonsai-2-27B (PQ2_0, A100, job 18222659, 81 s / 5712 completion tokens) proved miniF2F `amc12a_2017_p2` in one request: its `calc`/`field_simp` proof was one tactic short (`ring` missing after the first `field_simp`, leftover goal `y + x = x + y`). The patched proof verified with `lake build MiniF2F.MarxPilot` (job 18222865, 2 min 58 s warm) and locally against Mathlib v4.35.0. Artifacts on the cluster: scripts in `~/gitlab/marx-prover/pilot/` (`prove.sbatch`, `prove_client.py`, `lean-cc.sh`, `curl-wrapper.sh`, `diag_check.sbatch`, `nfs_probe.sbatch`), inference results in `~/results/lean_pilot_18222659/`, proof file `~/gitlab/miniF2F/MiniF2F/MarxPilot.lean`.
+
 ## Job monitoring
 
 ```

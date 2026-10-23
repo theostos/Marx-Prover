@@ -52,7 +52,17 @@ Acceptance gates run on the final folder state, never on the path taken ([detail
 
 ## Deployment
 
-The harness runs on CPU cores inside the same Slurm job as `llama-server`, and each agent POSTs to the job-local endpoint (see [CCUS HPC access](HPC-access.md)). What exists on the cluster today (`~/gitlab/marx-prover/`) is the serving layer only: `test_swarm.sh` (batch launcher) and `test_api.py` (minimal client), validated end-to-end with a single request. The swarm harness itself is unwritten; `harness.py` appears only as a hypothetical invocation in the Slurm template.
+The harness runs on CPU cores inside the same Slurm job as `llama-server`, and each agent POSTs to the job-local endpoint (see [CCUS HPC access](HPC-access.md)). Job start should also launch the verifier warm-up in parallel (one core doing a dummy `import Mathlib`, ~10 min cold on NFS — see the [Lean 4 retex](HPC-access.md)) so the first proof check is fast; on a Rocq pilot the same applies to the Rocq toplevel and its package loads. What exists on the cluster today (`~/gitlab/marx-prover/`) is the serving layer only: `test_swarm.sh` (batch launcher) and `test_api.py` (minimal client), validated end-to-end with a single request. The swarm harness itself is unwritten; `harness.py` appears only as a hypothetical invocation in the Slurm template.
+
+### Pilot loop validated (2026-10-23)
+
+The minimal loop — generate, check, repair, re-check — runs end-to-end on CCUS, one problem (miniF2F `amc12a_2017_p2`), Ternary-Bonsai-2-27B PQ2_0 on a single GPU, Lean checks as separate CPU jobs (`grant`):
+
+1. Model proves in one request (81 s, 5712 tokens); proof fails to compile by one tactic (`ring` missing after a `field_simp`, leftover goal `y + x = x + y`).
+2. Compiler error fed back verbatim; model repairs in one request (8 s, 787 tokens) with the expected one-line fix.
+3. Repaired proof verified by Lean on the cluster (`Build completed`, ~3 min warm) — no human in the loop.
+
+Full traces (prompts, CoT, proofs, compiler errors, timings) are kept for the SFT dataset on the laptop (`~/.marx-prover/lean4-pilot/`) and on the cluster (`~/results/lean_pilot_18222659/`, `~/results/lean_repair_18222951/`); scripts on the cluster in `~/gitlab/marx-prover/pilot/` (`prove.sbatch`, `repair_client.py`, `repair.sbatch`). Per-attempt overhead outside inference: one `lake build` (~3 min warm, no Mathlib recompilation). Next step: fold the check into the same job as the server and iterate repairs in a budgeted loop.
 
 ## Existing harnesses
 
