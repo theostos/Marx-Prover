@@ -6,7 +6,7 @@ Goal: 20 verified examples (10 math, 10 CS). Each example: a natural-language pr
 
 ## Environment
 
-Bash + a shared folder + one communication channel, per [Agent environment](Agent-environment.md). No roles, no turn-taking, no imposed workflow. The prompt names the medium, not the protocol.
+Bash + a shared folder + one communication channel, per [Agent environment](Agent-environment.md). No roles, no turn-taking, no imposed workflow. The prompt names the medium, not the protocol. The execution harness is specified in [Harness](Harness.md).
 
 Communication channel: a single append-only log `chat.log` in the shared folder.
 

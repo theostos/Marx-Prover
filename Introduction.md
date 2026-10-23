@@ -8,6 +8,7 @@ The agents learn to build their working setup together: divide tasks, write scri
 
 - [Organization](Organization.md)
 - [Environment](Agent-environment.md)
+- [Harness](Harness.md)
 - [Training](Training.md)
 - [SFT pilot dataset](Dataset-SFT-pilot.md)
 - [Learning signal](Learning-signal.md)
